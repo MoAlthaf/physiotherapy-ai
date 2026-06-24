@@ -1,1 +1,26 @@
 .venv/
+__pycache__/
+*.pyc
+
+idea.md
+.env
+.env.local
+frontend/.env.local
+
+# Database
+*.db
+
+# Claude Code files
+.claude/
+CLAUDE.md
+MEMORY.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
