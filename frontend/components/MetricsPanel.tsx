@@ -70,13 +70,13 @@ export default function MetricsPanel({
           <p className="text-sm font-medium text-gray-500">Max ROM</p>
         </div>
         <div className="space-y-1 text-sm">
-          {Object.entries(maxRom).map(([joint, angle]) => (
+          {Object.entries(maxRom ?? {}).map(([joint, angle]) => (
             <div key={joint} className="flex justify-between">
               <span className="text-gray-600 capitalize">{joint.replace(/_/g, " ")}</span>
               <span className="font-mono font-medium">{angle.toFixed(1)}&deg;</span>
             </div>
           ))}
-          {Object.keys(maxRom).length === 0 && (
+          {Object.keys(maxRom ?? {}).length === 0 && (
             <p className="text-gray-400">No data yet</p>
           )}
         </div>
@@ -113,7 +113,7 @@ export default function MetricsPanel({
           Live Joint Angles
         </summary>
         <div className="mt-2 space-y-1 text-sm">
-          {Object.entries(jointAngles).map(([joint, angle]) =>
+          {Object.entries(jointAngles ?? {}).map(([joint, angle]) =>
             angle != null ? (
               <div key={joint} className="flex justify-between">
                 <span className="text-gray-600 capitalize">{joint.replace(/_/g, " ")}</span>
