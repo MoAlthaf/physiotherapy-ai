@@ -28,6 +28,10 @@ export async function listExercises() {
   return fetchAPI<Exercise[]>("/api/exercise/list");
 }
 
+export async function getExerciseDetail(exerciseId: string) {
+  return fetchAPI<ExerciseDetail>(`/api/exercise/detail/${exerciseId}`);
+}
+
 export async function startExercise(exerciseType: string) {
   return fetchAPI<{ session_id: string; exercise_type: string }>(
     "/api/exercise/start",
@@ -52,6 +56,16 @@ export async function endExercise(sessionId: string) {
   return fetchAPI<SessionSummary>(`/api/exercise/${sessionId}/end`, {
     method: "POST",
   });
+}
+
+export async function getAISummary(sessionId: string) {
+  return fetchAPI<{ summary: string }>(`/api/exercise/${sessionId}/ai-summary`, {
+    method: "POST",
+  });
+}
+
+export async function getSessionDetail(sessionId: string) {
+  return fetchAPI<SessionRecord>(`/api/exercise/session/${sessionId}`);
 }
 
 export async function getSessionHistory(exerciseType?: string) {
@@ -157,6 +171,16 @@ export interface Exercise {
   id: string;
   name: string;
   description: string;
+  category: string;
+  difficulty: string;
+  muscles: string[];
+  duration_estimate: string;
+}
+
+export interface ExerciseDetail extends Exercise {
+  instructions: string[];
+  tips: string;
+  tracked_joints: string[];
 }
 
 export interface SessionSummary {

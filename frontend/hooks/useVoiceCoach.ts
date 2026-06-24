@@ -7,7 +7,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SILENCE_TIMEOUT_MS = 5000;
 const WAKE_PHRASE = "hey coach";
 
-type VoiceState = "idle" | "listening_wake" | "listening_command" | "processing" | "speaking";
+type VoiceState = "idle" | "listening_wake" | "wake_detected" | "listening_command" | "processing" | "speaking";
 
 interface UseVoiceCoachOptions {
   sessionId: string | null;
@@ -29,7 +29,25 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
   const isSpeakingRef = useRef(false);
   const announcedCompensationsRef = useRef<Set<string>>(new Set());
 
-  // --- TTS queue: plays one at a time ---
+  // Use refs for values that callbacks need to avoid stale closures
+  const voiceEnabledRef = useRef(voiceEnabled);
+  const isActiveRef = useRef(isActive);
+  const sessionIdRef = useRef(sessionId);
+  const onCoachResponseRef = useRef(onCoachResponse);
+  const voiceStateRef = useRef<VoiceState>("idle");
+
+  voiceEnabledRef.current = voiceEnabled;
+  isActiveRef.current = isActive;
+  sessionIdRef.current = sessionId;
+  onCoachResponseRef.current = onCoachResponse;
+
+  const setVoiceStateTracked = useCallback((state: VoiceState) => {
+    voiceStateRef.current = state;
+    setVoiceState(state);
+    console.log("[VoiceCoach] State:", state);
+  }, []);
+
+  // --- TTS queue ---
   const playTTS = useCallback(async (text: string) => {
     ttsQueueRef.current.push(text);
     if (isSpeakingRef.current) return;
@@ -42,27 +60,21 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
         const url = URL.createObjectURL(audioBlob);
         const audio = new Audio(url);
         await new Promise<void>((resolve) => {
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          audio.onerror = () => {
-            URL.revokeObjectURL(url);
-            resolve();
-          };
+          audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
           audio.play().catch(resolve);
         });
-      } catch {
-        // TTS failed, skip
+      } catch (e) {
+        console.warn("[VoiceCoach] TTS playback failed:", e);
       }
       isSpeakingRef.current = false;
     }
   }, []);
 
-  // --- Announce new compensations via TTS ---
+  // --- Announce new compensations ---
   const announceCompensation = useCallback(
     (compensations: { type: string; message: string }[]) => {
-      if (!voiceEnabled || !isActive) return;
+      if (!voiceEnabledRef.current || !isActiveRef.current) return;
       for (const c of compensations) {
         if (!announcedCompensationsRef.current.has(c.type)) {
           announcedCompensationsRef.current.add(c.type);
@@ -70,58 +82,59 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
         }
       }
     },
-    [voiceEnabled, isActive, playTTS]
+    [playTTS]
   );
 
-  // --- Reset announced compensations when session changes ---
   useEffect(() => {
     announcedCompensationsRef.current.clear();
   }, [sessionId]);
 
-  // --- Send recorded audio to Fanar STT, then chat, then TTS ---
+  // --- Process voice command: STT → Chat → TTS ---
   const processVoiceCommand = useCallback(
     async (audioBlob: Blob) => {
-      if (!sessionId) return;
-      setVoiceState("processing");
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      setVoiceStateTracked("processing");
 
       try {
-        // STT
         const formData = new FormData();
         formData.append("file", audioBlob, "audio.wav");
         const sttRes = await fetch(`${API_BASE}/api/voice/stt`, {
           method: "POST",
           body: formData,
         });
-        if (!sttRes.ok) throw new Error("STT failed");
+        if (!sttRes.ok) throw new Error(`STT failed: ${sttRes.status}`);
         const { text } = await sttRes.json();
 
+        console.log("[VoiceCoach] STT result:", text);
+
         if (!text || text.trim().length === 0) {
-          setVoiceState("listening_wake");
+          startWakeListening();
           return;
         }
 
         setTranscript(text);
 
-        // Chat with session context
-        const { response } = await sendChatWithSession(sessionId, text);
+        const { response } = await sendChatWithSession(sid, text);
         setCoachMessage(response);
-        onCoachResponse?.(response);
+        onCoachResponseRef.current?.(response);
+        console.log("[VoiceCoach] Coach response:", response.substring(0, 80));
 
-        // TTS response
-        setVoiceState("speaking");
+        setVoiceStateTracked("speaking");
         await playTTS(response);
-      } catch {
-        // Voice pipeline failed
+      } catch (e) {
+        console.warn("[VoiceCoach] Pipeline error:", e);
       }
 
-      setVoiceState("listening_wake");
+      startWakeListening();
     },
-    [sessionId, playTTS, onCoachResponse]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [playTTS, setVoiceStateTracked]
   );
 
-  // --- Start recording actual command via MediaRecorder ---
+  // --- Record command after wake word ---
   const startCommandRecording = useCallback(async () => {
-    setVoiceState("listening_command");
+    setVoiceStateTracked("listening_command");
     audioChunksRef.current = [];
 
     try {
@@ -135,47 +148,67 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
 
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        console.log("[VoiceCoach] Recording stopped, blob size:", blob.size);
         if (blob.size > 1000) {
           processVoiceCommand(blob);
         } else {
-          setVoiceState("listening_wake");
+          startWakeListening();
         }
       };
 
       recorder.start();
+      console.log("[VoiceCoach] Recording started");
 
-      // Silence detection: stop after 5s of no new speech
+      // Silence timer
       const resetSilenceTimer = () => {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
+          console.log("[VoiceCoach] Silence timeout — stopping recording");
           if (mediaRecorderRef.current?.state === "recording") {
             mediaRecorderRef.current.stop();
           }
         }, SILENCE_TIMEOUT_MS);
       };
 
-      // Use Web Speech API to detect when user is speaking to reset the timer
-      const silenceRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      silenceRecognition.continuous = true;
-      silenceRecognition.interimResults = true;
-      silenceRecognition.onresult = () => resetSilenceTimer();
-      silenceRecognition.onend = () => {
-        // If recorder is still going, speech ended -> let silence timer finish it
-      };
-      silenceRecognition.start();
+      // Use Web Speech API alongside to detect speech activity
+      try {
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const silenceRecognition = new SpeechRec();
+        silenceRecognition.continuous = true;
+        silenceRecognition.interimResults = true;
+        silenceRecognition.onresult = () => resetSilenceTimer();
+        silenceRecognition.onerror = () => {};
+        silenceRecognition.onend = () => {};
+        silenceRecognition.start();
+      } catch {
+        // Fallback: no speech activity detection, just use the timer
+      }
 
-      // Start the initial silence timer
       resetSilenceTimer();
-    } catch {
-      setVoiceState("listening_wake");
+    } catch (e) {
+      console.warn("[VoiceCoach] Mic access failed:", e);
+      startWakeListening();
     }
-  }, [processVoiceCommand]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processVoiceCommand, setVoiceStateTracked]);
 
-  // --- Web Speech API wake word listener ---
-  const startWakeWordListener = useCallback(() => {
+  // --- Start wake word listening ---
+  const startWakeListening = useCallback(() => {
+    // Don't start if disabled
+    if (!voiceEnabledRef.current || !isActiveRef.current) {
+      setVoiceStateTracked("idle");
+      return;
+    }
+
+    // Clean up any existing recognition
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+
     if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
-      console.warn("Web Speech API not supported");
+      console.warn("[VoiceCoach] Web Speech API not supported in this browser");
       return;
     }
 
@@ -185,65 +218,94 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
+    let wakeDetected = false;
+
+    recognition.onstart = () => {
+      console.log("[VoiceCoach] Wake word listener started");
+    };
+
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (wakeDetected) return;
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0].transcript.toLowerCase().trim();
-        if (text.includes(WAKE_PHRASE)) {
+        console.log("[VoiceCoach] Heard:", text);
+        if (text.includes(WAKE_PHRASE) || text.includes("hey couch") || text.includes("a]coach")) {
+          console.log("[VoiceCoach] Wake word DETECTED!");
+          wakeDetected = true;
           recognition.stop();
-          startCommandRecording();
+          recognitionRef.current = null;
+          setVoiceStateTracked("wake_detected");
+          setTimeout(() => startCommandRecording(), 600);
           return;
         }
       }
     };
 
     recognition.onend = () => {
-      // Restart if still in wake listening mode
-      if (voiceEnabled && isActive) {
-        try {
-          recognition.start();
-        } catch {
-          // Already started
-        }
+      console.log("[VoiceCoach] Wake listener ended, wakeDetected:", wakeDetected);
+      if (!wakeDetected && voiceEnabledRef.current && isActiveRef.current) {
+        // Chrome stops recognition periodically — restart it
+        setTimeout(() => {
+          if (voiceEnabledRef.current && isActiveRef.current && voiceStateRef.current === "listening_wake") {
+            try {
+              console.log("[VoiceCoach] Restarting wake listener");
+              recognition.start();
+            } catch (e) {
+              console.warn("[VoiceCoach] Restart failed:", e);
+            }
+          }
+        }, 100);
       }
     };
 
     recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
-      if (e.error !== "no-speech" && e.error !== "aborted") {
-        console.warn("Wake word recognition error:", e.error);
+      if (e.error === "not-allowed") {
+        console.error("[VoiceCoach] Microphone permission denied! Please allow microphone access.");
+      } else if (e.error !== "no-speech" && e.error !== "aborted") {
+        console.warn("[VoiceCoach] Recognition error:", e.error);
       }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
-    setVoiceState("listening_wake");
-  }, [voiceEnabled, isActive, startCommandRecording]);
+    try {
+      recognition.start();
+      setVoiceStateTracked("listening_wake");
+    } catch (e) {
+      console.warn("[VoiceCoach] Failed to start recognition:", e);
+    }
+  }, [startCommandRecording, setVoiceStateTracked]);
 
-  // --- Toggle voice on/off ---
+  // --- Toggle ---
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => !prev);
   }, []);
 
-  // --- Start/stop wake word listener based on state ---
+  // --- Main effect: start/stop based on state ---
   useEffect(() => {
     if (voiceEnabled && isActive) {
-      startWakeWordListener();
+      startWakeListening();
     } else {
       // Cleanup
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+        recognitionRef.current = null;
+      }
       if (mediaRecorderRef.current?.state === "recording") {
         mediaRecorderRef.current.stop();
       }
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      setVoiceState("idle");
+      setVoiceStateTracked("idle");
     }
 
     return () => {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+        recognitionRef.current = null;
+      }
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
-  }, [voiceEnabled, isActive, startWakeWordListener]);
+  }, [voiceEnabled, isActive, startWakeListening, setVoiceStateTracked]);
 
   return {
     voiceState,
