@@ -75,13 +75,15 @@ async def transcribe_audio(audio_bytes: bytes, language: str = "en") -> str:
     return data.get("text", "")
 
 
-async def text_to_speech(text: str) -> bytes:
+async def text_to_speech(text: str, voice: str = "Amelia") -> bytes:
     """Convert text to speech using Fanar TTS."""
     response = await _client.post(
         "/audio/speech",
         json={
             "input": text,
-            "model": "tts-1",  # Will need to verify exact model name
+            "model": "Fanar-Aura-TTS-2",
+            "voice": voice,
+            "response_format": "mp3",
         },
     )
     response.raise_for_status()

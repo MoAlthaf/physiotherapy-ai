@@ -91,9 +91,11 @@ export async function speechToText(audioBlob: Blob): Promise<string> {
   return data.text;
 }
 
-export async function textToSpeech(text: string): Promise<Blob> {
-  const res = await fetch(`${API_BASE}/api/voice/tts?text=${encodeURIComponent(text)}`, {
+export async function textToSpeech(text: string, voice: string = "Amelia"): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/voice/tts`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, voice }),
   });
   if (!res.ok) throw new Error("TTS failed");
   return res.blob();

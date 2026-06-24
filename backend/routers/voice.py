@@ -1,6 +1,6 @@
-import base64
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from backend.services import fanar_client
 import io
 
@@ -18,11 +18,16 @@ async def speech_to_text(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"STT failed: {e}")
 
 
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "Amelia"
+
+
 @router.post("/tts")
-async def text_to_speech(text: str):
+async def text_to_speech(req: TTSRequest):
     """Convert text to speech audio using Fanar TTS."""
     try:
-        audio_bytes = await fanar_client.text_to_speech(text)
+        audio_bytes = await fanar_client.text_to_speech(req.text, req.voice)
         return StreamingResponse(
             io.BytesIO(audio_bytes),
             media_type="audio/mpeg",
