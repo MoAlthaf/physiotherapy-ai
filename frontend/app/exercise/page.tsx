@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import WebcamCapture from "@/components/WebcamCapture";
 import SkeletonOverlay from "@/components/SkeletonOverlay";
 import MetricsPanel from "@/components/MetricsPanel";
+import useVoiceCoach from "@/hooks/useVoiceCoach";
 import {
   listExercises,
   startExercise,
@@ -16,7 +17,7 @@ import {
   type SymmetryResult,
   type CompensationFlag,
 } from "@/lib/api";
-import { Play, Square, ChevronDown } from "lucide-react";
+import { Play, Square, ChevronDown, Mic, MicOff, Volume2 } from "lucide-react";
 
 export default function ExercisePage() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -32,7 +33,23 @@ export default function ExercisePage() {
   const [compensations, setCompensations] = useState<CompensationFlag[]>([]);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [coachLog, setCoachLog] = useState<string[]>([]);
   const processingRef = useRef(false);
+
+  const {
+    voiceState,
+    voiceEnabled,
+    toggleVoice,
+    transcript,
+    coachMessage,
+    announceCompensation,
+  } = useVoiceCoach({
+    sessionId,
+    isActive,
+    onCoachResponse: (text) => {
+      setCoachLog((prev) => [...prev.slice(-4), text]);
+    },
+  });
 
   useEffect(() => {
     listExercises()
@@ -50,6 +67,7 @@ export default function ExercisePage() {
       setSessionId(session_id);
       setIsActive(true);
       setSummary(null);
+      setCoachLog([]);
       setReps(0);
       setPhase("idle");
       setMaxRom({});
@@ -90,20 +108,56 @@ export default function ExercisePage() {
         setMaxRom(data.max_rom);
         setSymmetry(data.symmetry);
         setCompensations(data.compensations);
+
+        // Announce new compensations via TTS
+        if (data.compensations && data.compensations.length > 0) {
+          announceCompensation(data.compensations);
+        }
       } catch {
         // Skip frame errors silently
       } finally {
         processingRef.current = false;
       }
     },
-    [sessionId]
+    [sessionId, announceCompensation]
   );
+
+  const voiceStatusLabel = {
+    idle: "Voice Off",
+    listening_wake: "Say 'Hey Coach'",
+    listening_command: "Listening...",
+    processing: "Processing...",
+    speaking: "Coach speaking...",
+  }[voiceState];
+
+  const voiceStatusColor = {
+    idle: "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+    listening_wake: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
+    listening_command: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400 animate-pulse",
+    processing: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400",
+    speaking: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400",
+  }[voiceState];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-wrap items-center gap-4">
         <h1 className="text-2xl font-bold">Exercise Session</h1>
         <div className="flex items-center gap-2 ml-auto">
+          {/* Voice toggle */}
+          {isActive && (
+            <button
+              onClick={toggleVoice}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                voiceEnabled
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-400"
+              }`}
+            >
+              {voiceEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+              <span className="hidden sm:inline">Voice Coach</span>
+            </button>
+          )}
+
           <div className="relative">
             <select
               value={selectedExercise}
@@ -144,6 +198,23 @@ export default function ExercisePage() {
         </div>
       )}
 
+      {/* Voice status bar */}
+      {isActive && voiceEnabled && (
+        <div className={`mb-4 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium ${voiceStatusColor}`}>
+          {voiceState === "listening_command" ? (
+            <Mic className="h-4 w-4 animate-pulse" />
+          ) : voiceState === "speaking" ? (
+            <Volume2 className="h-4 w-4" />
+          ) : (
+            <Mic className="h-4 w-4" />
+          )}
+          <span>{voiceStatusLabel}</span>
+          {transcript && voiceState === "processing" && (
+            <span className="ml-auto text-xs opacity-70">You said: &ldquo;{transcript}&rdquo;</span>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Webcam + Skeleton */}
         <div className="lg:col-span-2">
@@ -163,6 +234,21 @@ export default function ExercisePage() {
             <p className="mt-3 text-sm text-gray-500">
               {exercises.find((e) => e.id === selectedExercise)?.description}
             </p>
+          )}
+
+          {/* Coach response log */}
+          {coachLog.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {coachLog.map((msg, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2 rounded-lg bg-purple-50 px-3 py-2 text-sm text-purple-900 dark:bg-purple-950/30 dark:text-purple-200"
+                >
+                  <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-500" />
+                  <p>{msg}</p>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
