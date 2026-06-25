@@ -59,6 +59,7 @@ export default function ExerciseSessionPage({ params }: { params: Promise<{ id: 
   const [maxRom, setMaxRom] = useState<Record<string, number>>({});
   const [symmetry, setSymmetry] = useState<SymmetryResult | null>(null);
   const [compensations, setCompensations] = useState<CompensationFlag[]>([]);
+  const [lowVisibility, setLowVisibility] = useState<string[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [coachLog, setCoachLog] = useState<string[]>([]);
@@ -185,6 +186,7 @@ export default function ExerciseSessionPage({ params }: { params: Promise<{ id: 
         setMaxRom(data.max_rom);
         setSymmetry(data.symmetry);
         setCompensations(data.compensations ?? []);
+        setLowVisibility(data.low_visibility ?? []);
 
         if (data.compensations && data.compensations.length > 0) {
           announceCompensation(data.compensations);
@@ -396,6 +398,15 @@ export default function ExerciseSessionPage({ params }: { params: Promise<{ id: 
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             {error}
+          </div>
+        )}
+
+        {isActive && lowVisibility.length > 0 && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              Can&apos;t see your <strong>{lowVisibility.join(", ")}</strong> clearly — move back or adjust camera
+            </span>
           </div>
         )}
 

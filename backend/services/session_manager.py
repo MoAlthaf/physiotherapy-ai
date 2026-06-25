@@ -2,7 +2,7 @@ import uuid
 from backend.services.rom import ROMTracker
 from backend.services.rep_counter import RepCounter
 from backend.services.exercise_profiles import get_exercise_profile
-from backend.services.biomechanics import calculate_all_angles
+from backend.services.biomechanics import calculate_all_angles, get_low_visibility_joints
 from backend.services.symmetry import calculate_symmetry
 from backend.services.compensation import detect_compensations
 from backend.db import storage
@@ -25,6 +25,7 @@ class ExerciseSession:
         self.frame_count = 0
         self.symmetry_scores: list[float] = []
         self.total_compensations = 0
+        self.recent_compensation_types: set[str] = set()
 
         storage.create_session(self.session_id, exercise_type)
 
@@ -32,18 +33,25 @@ class ExerciseSession:
         """Process a single frame's landmarks and return analysis."""
         self.frame_count += 1
 
+        low_visibility = get_low_visibility_joints(landmarks)
         angles = calculate_all_angles(landmarks)
         self.rom_tracker.update(angles)
 
-        # Rep counting on primary joint
-        primary_angle = angles.get(self.profile["primary_joint"], 0)
-        phase = self.rep_counter.update(primary_angle)
+        # Rep counting — skip if primary joint not visible
+        primary_joint = self.profile["primary_joint"]
+        primary_angle = angles.get(primary_joint)
+        if primary_angle is not None:
+            phase = self.rep_counter.update(primary_angle)
+        else:
+            phase = self.rep_counter.phase
 
         symmetry = calculate_symmetry(angles)
         self.symmetry_scores.append(symmetry["overall_score"])
 
         compensations = detect_compensations(landmarks, self.exercise_type)
         self.total_compensations += len(compensations)
+        for c in compensations:
+            self.recent_compensation_types.add(c.get("type", "unknown"))
 
         # Save frame data periodically (every 5th frame to avoid DB bloat)
         if self.frame_count % 5 == 0:
@@ -68,6 +76,7 @@ class ExerciseSession:
             "max_rom": self.rom_tracker.get_max_rom(),
             "symmetry": symmetry,
             "compensations": compensations,
+            "low_visibility": low_visibility,
         }
 
     def end(self) -> dict:

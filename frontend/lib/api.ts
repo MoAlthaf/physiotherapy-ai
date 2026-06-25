@@ -105,7 +105,7 @@ export async function speechToText(audioBlob: Blob): Promise<string> {
   return data.text;
 }
 
-export async function textToSpeech(text: string, voice: string = "Amelia"): Promise<Blob> {
+export async function textToSpeech(text: string, voice: string = "Jake"): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/voice/tts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -165,6 +165,7 @@ export interface ExerciseFrameResponse {
   symmetry: SymmetryResult | null;
   compensations: CompensationFlag[];
   phase: string;
+  low_visibility: string[];
 }
 
 export interface Exercise {

@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { sendChatWithSession, textToSpeech } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const SILENCE_TIMEOUT_MS = 5000;
+const SILENCE_TIMEOUT_MS = 3000;
 const WAKE_PHRASE = "hey coach";
 
 type VoiceState = "idle" | "listening_wake" | "wake_detected" | "listening_command" | "processing" | "speaking";
@@ -89,7 +89,7 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
     announcedCompensationsRef.current.clear();
   }, [sessionId]);
 
-  // --- Process voice command: STT → Chat → TTS ---
+  // --- Process voice command: STT → Streaming Chat → Progressive TTS ---
   const processVoiceCommand = useCallback(
     async (audioBlob: Blob) => {
       const sid = sessionIdRef.current;
@@ -114,14 +114,59 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
         }
 
         setTranscript(text);
-
-        const { response } = await sendChatWithSession(sid, text);
-        setCoachMessage(response);
-        onCoachResponseRef.current?.(response);
-        console.log("[VoiceCoach] Coach response:", response.substring(0, 80));
-
         setVoiceStateTracked("speaking");
-        await playTTS(response);
+
+        // Stream chat response and play TTS progressively
+        const streamRes = await fetch(`${API_BASE}/api/chat/stream/${sid}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+
+        if (!streamRes.ok || !streamRes.body) {
+          // Fallback to non-streaming
+          const { response } = await sendChatWithSession(sid, text);
+          setCoachMessage(response);
+          onCoachResponseRef.current?.(response);
+          await playTTS(response);
+          startWakeListening();
+          return;
+        }
+
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.sentence) {
+                fullText += (fullText ? " " : "") + data.sentence;
+                setCoachMessage(fullText);
+                onCoachResponseRef.current?.(fullText);
+                console.log("[VoiceCoach] Playing sentence:", data.sentence);
+                await playTTS(data.sentence);
+              }
+              if (data.error) {
+                console.warn("[VoiceCoach] Stream error:", data.error);
+              }
+            } catch {}
+          }
+        }
+
+        if (!fullText) {
+          console.warn("[VoiceCoach] No response from stream");
+        }
       } catch (e) {
         console.warn("[VoiceCoach] Pipeline error:", e);
       }
@@ -220,9 +265,9 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
 
     let wakeDetected = false;
 
-    recognition.onstart = () => {
+    recognition.addEventListener("start", () => {
       console.log("[VoiceCoach] Wake word listener started");
-    };
+    });
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       if (wakeDetected) return;

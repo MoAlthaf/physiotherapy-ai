@@ -17,21 +17,22 @@ _client = httpx.AsyncClient(
 )
 
 
-COACH_SYSTEM_PROMPT = """You are PhysioAI Coach, an AI-powered physiotherapy assistant.
-You help patients understand their exercise performance and guide their rehabilitation.
+COACH_SYSTEM_PROMPT = """You are PhysioAI Coach. Reply in 1-2 short sentences MAX. Be direct.
+Rules:
+- Reply ONLY in the language the user speaks. If they speak Arabic, reply in Arabic. If English, reply in English.
+- Never mix languages.
+- No greetings, no filler, no disclaimers.
+- For pain questions: say "consult your therapist" and nothing else.
+- Use session data to give specific, actionable form feedback."""
 
-When given session data, you should:
-1. Interpret the biomechanics metrics (ROM, symmetry, compensation) in plain language
-2. Give encouraging, actionable feedback
-3. Highlight improvements and areas that need attention
-4. Suggest adjustments to form if compensations are detected
-5. Be warm, supportive, and professional
-
-Always speak directly to the patient. Keep responses concise (2-4 sentences for quick feedback,
-longer for session summaries). If the patient asks about pain, remind them to consult their
-therapist for pain-related concerns.
-
-You can communicate in both English and Arabic based on the patient's language preference."""
+LIVE_COACH_PROMPT = """You are a live exercise coach watching the user work out RIGHT NOW. Talk like a gym bro coach — short, hype, direct.
+Rules:
+- 1 sentence MAX. Keep it under 15 words.
+- Reply ONLY in the language the user speaks.
+- Reference their ACTUAL numbers: reps, ROM angles, symmetry %, compensations.
+- If they ask about form: give ONE specific cue based on the data.
+- If symmetry < 70%: call it out. If compensations > 0: tell them what to fix.
+- No greetings, no "great question", no filler. Just coach."""
 
 
 async def chat(message: str, session_context: dict | None = None) -> str:
@@ -54,13 +55,71 @@ async def chat(message: str, session_context: dict | None = None) -> str:
         json={
             "model": MODEL_NAME,
             "messages": messages,
-            "max_tokens": 500,
+            "max_tokens": 150,
             "temperature": 0.7,
         },
     )
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"]
+
+
+async def chat_stream(message: str, session_context: dict | None = None):
+    """Stream live coach response sentence by sentence."""
+    messages = [{"role": "system", "content": LIVE_COACH_PROMPT}]
+
+    if session_context:
+        sym = session_context.get('symmetry')
+        sym_str = f"{sym.get('overall_score', 'N/A')}%" if isinstance(sym, dict) else str(sym)
+        rom = session_context.get('max_rom', {})
+        rom_str = ", ".join(f"{k}: {v:.0f}°" for k, v in rom.items()) if rom else "none yet"
+        comp = session_context.get('compensations', 0)
+        comp_types = session_context.get('compensation_types', [])
+        comp_str = f"{comp} ({', '.join(comp_types)})" if comp_types else str(comp)
+        context_msg = f"LIVE DATA — exercise: {session_context.get('exercise_type', 'unknown')}, reps: {session_context.get('reps', 0)}, ROM: [{rom_str}], symmetry: {sym_str}, compensations: {comp_str}"
+        messages.append({"role": "system", "content": context_msg})
+
+    messages.append({"role": "user", "content": message})
+
+    async with _client.stream(
+        "POST",
+        "/chat/completions",
+        json={
+            "model": MODEL_NAME,
+            "messages": messages,
+            "max_tokens": 150,
+            "temperature": 0.7,
+            "stream": True,
+        },
+    ) as response:
+        response.raise_for_status()
+        buffer = ""
+        async for line in response.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data = line[6:]
+            if data == "[DONE]":
+                if buffer.strip():
+                    yield buffer.strip()
+                return
+            import json as _json
+            try:
+                chunk = _json.loads(data)
+            except Exception:
+                continue
+            delta = chunk.get("choices", [{}])[0].get("delta", {})
+            token = delta.get("content", "")
+            if not token:
+                continue
+            buffer += token
+            # Yield on sentence boundaries for progressive TTS
+            for sep in [".", "!", "?", "。", "؟"]:
+                if sep in buffer:
+                    parts = buffer.split(sep, 1)
+                    sentence = parts[0] + sep
+                    buffer = parts[1]
+                    if sentence.strip():
+                        yield sentence.strip()
 
 
 async def transcribe_audio(audio_bytes: bytes, language: str = "en") -> str:
@@ -75,7 +134,7 @@ async def transcribe_audio(audio_bytes: bytes, language: str = "en") -> str:
     return data.get("text", "")
 
 
-async def text_to_speech(text: str, voice: str = "Amelia") -> bytes:
+async def text_to_speech(text: str, voice: str = "Jake") -> bytes:
     """Convert text to speech using Fanar TTS."""
     response = await _client.post(
         "/audio/speech",

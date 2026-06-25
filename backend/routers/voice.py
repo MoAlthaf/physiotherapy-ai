@@ -20,7 +20,7 @@ async def speech_to_text(file: UploadFile = File(...)):
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "Amelia"
+    voice: str = "Jake"
 
 
 @router.post("/tts")
