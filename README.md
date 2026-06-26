@@ -1,28 +1,28 @@
-#Problem Statement
+# Problem Statement
 Current home-based physiotherapy often lacks personalization and continuous supervision. Patients are commonly prescribed standardized exercise programs with limited adaptation to their individual condition, pain level, mobility, or progress. Once patients leave the clinic, they typically perform exercises at home without professional guidance, making it difficult to ensure that exercises are performed correctly. This can lead to poor technique, reduced effectiveness, slower recovery, lower patient adherence, and an increased risk of re-injury.
 
-#Solution
+# Solution
 Kinetra is an AI-powered home physiotherapy platform that provides personalized rehabilitation guidance, real-time exercise supervision, and an interactive virtual physiotherapy coach. Unlike conventional home physiotherapy, Kinetra continuously monitors the user's performance, provides immediate feedback, and allows users to communicate naturally with an AI coach throughout their recovery.
 
-#How it Works
+# How it Works
 The platform consists of two primary modules:
 
 1. AI-powered coach (Conversational Assistant)
 2. Exercise Monitoring using computer vision
 
-#AI-powered coach
+# AI-powered coach
 The AI Coach enables users to ask rehabilitation-related questions before, during, or after their exercise sessions. Before any prompt reaches the language model, it is passed through a classifier that assigns confidence scores to predefined labels, such as:
--Non-health related
--Harmful medical advice
--Offensive content
--Prompt injection attempts
--Dangerous instructions
--Unrelated conversation
+- Non-health related
+- Harmful medical advice
+- Offensive content
+- Prompt injection attempts
+- Dangerous instructions
+- Unrelated conversation
 
 Each label has its own confidence threshold. If any confidence score exceeds its threshold:
--the prompt is blocked,
--the LLM is informed which safety rule was violated,
--the AI politely refuses the request.
+- The prompt is blocked,
+- the LLM is informed which safety rule was violated,
+- the AI politely refuses the request.
 
 Otherwise, the prompt is forwarded to the LLM for response generation.
 
