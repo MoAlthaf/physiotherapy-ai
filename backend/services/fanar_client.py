@@ -1,6 +1,8 @@
 import os
 import httpx
 import base64
+import uuid
+from collections import defaultdict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,37 +19,62 @@ _client = httpx.AsyncClient(
 )
 
 
-COACH_SYSTEM_PROMPT = """You are PhysioAI Coach. Reply in 1-2 short sentences MAX. Be direct.
+MAX_HISTORY = 20
+
+_conversations: dict[str, list[dict]] = {}
+
+
+def get_or_create_conversation(conversation_id: str | None) -> tuple[str, list[dict]]:
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+    if conversation_id not in _conversations:
+        _conversations[conversation_id] = []
+    return conversation_id, _conversations[conversation_id]
+
+
+COACH_SYSTEM_PROMPT = """You are PhysioAI Coach, an AI physiotherapy assistant. Reply in 2-4 sentences. Be helpful and specific.
 Rules:
-- Reply ONLY in the language the user speaks. If they speak Arabic, reply in Arabic. If English, reply in English.
-- Never mix languages.
+- Reply ONLY in the language the user speaks. If Arabic, reply in Arabic. If English, reply in English.
+- NEVER use exclamation marks. Use periods only.
 - No greetings, no filler, no disclaimers.
 - For pain questions: say "consult your therapist" and nothing else.
-- Use session data to give specific, actionable form feedback."""
+- When session data is provided, reference specific numbers (ROM, symmetry %, reps) in your feedback.
+- Give actionable form corrections based on the data."""
 
-LIVE_COACH_PROMPT = """You are a live exercise coach watching the user work out RIGHT NOW. Talk like a gym bro coach — short, hype, direct.
-Rules:
-- 1 sentence MAX. Keep it under 15 words.
-- Reply ONLY in the language the user speaks.
-- Reference their ACTUAL numbers: reps, ROM angles, symmetry %, compensations.
-- If they ask about form: give ONE specific cue based on the data.
-- If symmetry < 70%: call it out. If compensations > 0: tell them what to fix.
-- No greetings, no "great question", no filler. Just coach."""
+LIVE_COACH_PROMPT = """You are a real-time exercise coach. The user's message starts with [SESSION DATA: ...] or [I am doing ...].
+You MUST follow these rules strictly:
+
+1. Reply in 2-3 sentences. Never use exclamation marks, only periods.
+2. Reply ONLY in the language the user writes in after the brackets.
+3. If SESSION DATA is provided, you MUST quote the exact numbers from it. Example: "Your left knee ROM is 95 degrees" or "You have done 5 reps so far with 82% symmetry."
+4. Do NOT invent or assume any numbers. If the data says 0 reps, say 0 reps. If symmetry is 100%, say symmetry is excellent.
+5. If no scores are available yet, give general form tips for that exercise only.
+6. If compensations are listed, name them and give a correction cue.
+7. No greetings, no filler, no "great job" without reason."""
 
 
-async def chat(message: str, session_context: dict | None = None) -> str:
-    """Send a chat message to Fanar with optional exercise session context."""
+async def chat(message: str, session_context: dict | None = None, conversation_id: str | None = None) -> tuple[str, str]:
+    """Send a chat message to Fanar with conversation history. Returns (response, conversation_id)."""
+    conversation_id, history = get_or_create_conversation(conversation_id)
+
     messages = [{"role": "system", "content": COACH_SYSTEM_PROMPT}]
 
     if session_context:
-        context_msg = f"""Current session data:
-- Exercise: {session_context.get('exercise_type', 'unknown')}
-- Reps completed: {session_context.get('reps', 0)}
-- Max ROM: {session_context.get('max_rom', {})}
-- Symmetry score: {session_context.get('symmetry', 'N/A')}
-- Compensations detected: {session_context.get('compensations', 0)}"""
+        parts = [f"Exercise: {session_context.get('exercise_type', 'unknown')}"]
+        parts.append(f"Reps: {session_context.get('reps', 0)}")
+        rom = session_context.get('max_rom', {})
+        if rom:
+            parts.append(f"Max ROM: {', '.join(f'{k}: {v}°' for k, v in rom.items())}")
+        sym = session_context.get('symmetry')
+        if sym is not None:
+            parts.append(f"Symmetry: {sym}%")
+        comp = session_context.get('compensations', 0)
+        if comp > 0:
+            parts.append(f"Compensations: {comp}")
+        context_msg = "Session data:\n" + "\n".join(parts) + "\nOnly reference these exact numbers."
         messages.append({"role": "system", "content": context_msg})
 
+    messages.extend(history[-MAX_HISTORY:])
     messages.append({"role": "user", "content": message})
 
     response = await _client.post(
@@ -55,30 +82,49 @@ async def chat(message: str, session_context: dict | None = None) -> str:
         json={
             "model": MODEL_NAME,
             "messages": messages,
-            "max_tokens": 150,
-            "temperature": 0.7,
+            "max_tokens": 250,
+            "temperature": 0.4,
         },
     )
     response.raise_for_status()
     data = response.json()
-    return data["choices"][0]["message"]["content"]
+    reply = data["choices"][0]["message"]["content"].replace("!", ".")
+
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": reply})
+
+    return reply, conversation_id
 
 
-async def chat_stream(message: str, session_context: dict | None = None):
-    """Stream live coach response sentence by sentence."""
+async def chat_stream(message: str, session_context: dict | None = None, conversation_id: str | None = None):
+    """Stream live coach response sentence by sentence. Returns sentences, then stores history."""
+    conversation_id, history = get_or_create_conversation(conversation_id)
+
     messages = [{"role": "system", "content": LIVE_COACH_PROMPT}]
 
     if session_context:
-        sym = session_context.get('symmetry')
-        sym_str = f"{sym.get('overall_score', 'N/A')}%" if isinstance(sym, dict) else str(sym)
+        exercise = session_context.get('exercise_type', 'unknown')
+        reps = session_context.get('reps', 0)
         rom = session_context.get('max_rom', {})
-        rom_str = ", ".join(f"{k}: {v:.0f}°" for k, v in rom.items()) if rom else "none yet"
+        sym = session_context.get('symmetry')
         comp = session_context.get('compensations', 0)
         comp_types = session_context.get('compensation_types', [])
-        comp_str = f"{comp} ({', '.join(comp_types)})" if comp_types else str(comp)
-        context_msg = f"LIVE DATA — exercise: {session_context.get('exercise_type', 'unknown')}, reps: {session_context.get('reps', 0)}, ROM: [{rom_str}], symmetry: {sym_str}, compensations: {comp_str}"
-        messages.append({"role": "system", "content": context_msg})
 
+        has_data = reps > 0 or bool(rom)
+
+        if has_data:
+            data_lines = [f"Exercise: {exercise}", f"Reps completed: {reps}"]
+            if rom:
+                data_lines.append("Max ROM: " + ", ".join(f"{k.replace('_', ' ')}: {v:.0f}°" for k, v in rom.items()))
+            if isinstance(sym, dict) and sym.get('overall_score') is not None:
+                data_lines.append(f"Symmetry score: {sym['overall_score']}%")
+            if comp > 0:
+                data_lines.append(f"Compensations: {comp}" + (f" ({', '.join(comp_types)})" if comp_types else ""))
+            message = "[SESSION DATA: " + " | ".join(data_lines) + "]\n" + message
+        else:
+            message = f"[I am doing {exercise}. I just started, no scores yet.]\n" + message
+
+    messages.extend(history[-MAX_HISTORY:])
     messages.append({"role": "user", "content": message})
 
     async with _client.stream(
@@ -87,8 +133,8 @@ async def chat_stream(message: str, session_context: dict | None = None):
         json={
             "model": MODEL_NAME,
             "messages": messages,
-            "max_tokens": 150,
-            "temperature": 0.7,
+            "max_tokens": 250,
+            "temperature": 0.4,
             "stream": True,
         },
     ) as response:
@@ -100,7 +146,7 @@ async def chat_stream(message: str, session_context: dict | None = None):
             data = line[6:]
             if data == "[DONE]":
                 if buffer.strip():
-                    yield buffer.strip()
+                    yield buffer.replace("!", ".").strip()
                 return
             import json as _json
             try:
@@ -113,13 +159,13 @@ async def chat_stream(message: str, session_context: dict | None = None):
                 continue
             buffer += token
             # Yield on sentence boundaries for progressive TTS
-            for sep in [".", "!", "?", "。", "؟"]:
+            for sep in [".", "?", "。", "؟"]:
                 if sep in buffer:
                     parts = buffer.split(sep, 1)
-                    sentence = parts[0] + sep
+                    sentence = (parts[0] + sep).replace("!", ".").strip()
                     buffer = parts[1]
-                    if sentence.strip():
-                        yield sentence.strip()
+                    if sentence:
+                        yield sentence
 
 
 async def transcribe_audio(audio_bytes: bytes, language: str = "en") -> str:

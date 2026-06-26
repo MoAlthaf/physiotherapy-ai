@@ -64,10 +64,12 @@ class ExerciseFrameResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     session_context: Optional[dict] = None
+    conversation_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
     response: str
+    conversation_id: Optional[str] = None
     audio_url: Optional[str] = None
 
 

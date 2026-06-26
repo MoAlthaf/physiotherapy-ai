@@ -21,6 +21,7 @@ export default function CoachPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [conversationId, setConversationId] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -38,7 +39,8 @@ export default function CoachPage() {
     setIsLoading(true);
 
     try {
-      const { response } = await sendChatMessage(text);
+      const { response, conversation_id } = await sendChatMessage(text, undefined, conversationId);
+      if (conversation_id) setConversationId(conversation_id);
       setMessages((prev) => [...prev, { role: "assistant", content: response }]);
     } catch {
       setMessages((prev) => [

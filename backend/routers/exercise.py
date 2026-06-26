@@ -83,23 +83,30 @@ async def get_ai_summary(session_id: str):
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    prompt = f"""Generate a brief physiotherapy session report for the patient.
+    rom_data = session_data['max_rom']
+    rom_str = ", ".join(f"{k}: {v}°" for k, v in rom_data.items()) if isinstance(rom_data, dict) and rom_data else "no ROM recorded"
 
-Session data:
-- Exercise: {session_data['exercise_type'].replace('_', ' ').title()}
-- Total reps: {session_data['total_reps']}
-- Max ROM: {session_data['max_rom']}
-- Average symmetry: {session_data['avg_symmetry']}%
-- Total compensations detected: {session_data['total_compensations']}
-- Duration: {session_data['started_at']} to {session_data['ended_at']}
+    prompt = f"""Write a physiotherapy session report based ONLY on the data below. Do not invent numbers. Never use exclamation marks.
 
-Provide:
-1. A one-line performance summary
-2. What went well (1-2 points)
-3. Areas for improvement (1-2 points)
-4. Recommendation for next session
+Exercise: {session_data['exercise_type'].replace('_', ' ').title()}
+Reps completed: {session_data['total_reps']}
+Max ROM by joint: {rom_str}
+Average symmetry score: {session_data['avg_symmetry']}%
+Compensations detected: {session_data['total_compensations']}
 
-Keep it concise and encouraging."""
+Evaluate the session:
+- Symmetry above 85% is good, 70-85% is fair, below 70% needs work.
+- For squats, knee ROM of 90-120° is a good range. Below 70° means shallow squats.
+- For shoulder exercises, ROM above 150° is good, below 90° is limited.
+- Compensations above 5 indicate form issues.
+
+Write exactly:
+1. One-line performance summary with the actual numbers.
+2. What the data shows went well (cite the numbers).
+3. What needs improvement (cite the numbers).
+4. One specific recommendation for next session.
+
+Keep it to 4-6 sentences total. Use periods only, never exclamation marks."""
 
     try:
         response = await fanar_client.chat(prompt)

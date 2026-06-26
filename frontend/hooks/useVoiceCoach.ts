@@ -5,7 +5,14 @@ import { sendChatWithSession, textToSpeech } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SILENCE_TIMEOUT_MS = 3000;
-const WAKE_PHRASE = "hey coach";
+const WAKE_PHRASES = [
+  "hey coach", "hey couch", "hey catch", "hey courts",
+  "a coach", "a couch", "the coach", "hay coach",
+  "hey co", "hey coa", "hey cos", "hey cou",
+  "coach", "couch",
+  "hey cotch", "hey cauch", "hey koach", "hey kosh",
+  "hey coche", "he coach", "hey coac", "hey code",
+];
 
 type VoiceState = "idle" | "listening_wake" | "wake_detected" | "listening_command" | "processing" | "speaking";
 
@@ -275,8 +282,9 @@ export default function useVoiceCoach({ sessionId, isActive, onCoachResponse }: 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0].transcript.toLowerCase().trim();
         console.log("[VoiceCoach] Heard:", text);
-        if (text.includes(WAKE_PHRASE) || text.includes("hey couch") || text.includes("a]coach")) {
-          console.log("[VoiceCoach] Wake word DETECTED!");
+        const matched = WAKE_PHRASES.some((phrase) => text.includes(phrase));
+        if (matched) {
+          console.log("[VoiceCoach] Wake word DETECTED in:", text);
           wakeDetected = true;
           recognition.stop();
           recognitionRef.current = null;

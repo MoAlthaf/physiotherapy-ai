@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 async def chat(req: ChatRequest):
     """Send a message to the PhysioAI coach."""
     try:
-        response = await fanar_client.chat(req.message, req.session_context)
-        return ChatResponse(response=response)
+        response, conv_id = await fanar_client.chat(req.message, req.session_context, req.conversation_id)
+        return ChatResponse(response=response, conversation_id=conv_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
 
@@ -55,13 +55,19 @@ async def chat_stream(session_id: str, req: ChatRequest):
             "compensation_types": list(session.recent_compensation_types),
         }
 
+    conv_id = req.conversation_id or session_id
+
     async def event_generator():
         full_text = ""
         try:
-            async for sentence in fanar_client.chat_stream(req.message, context):
+            async for sentence in fanar_client.chat_stream(req.message, context, conv_id):
                 full_text += (" " + sentence) if full_text else sentence
                 yield f"data: {json.dumps({'sentence': sentence})}\n\n"
-            yield f"data: {json.dumps({'done': True, 'full_text': full_text})}\n\n"
+            if full_text:
+                _, history = fanar_client.get_or_create_conversation(conv_id)
+                history.append({"role": "user", "content": req.message})
+                history.append({"role": "assistant", "content": full_text})
+            yield f"data: {json.dumps({'done': True, 'full_text': full_text, 'conversation_id': conv_id})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 

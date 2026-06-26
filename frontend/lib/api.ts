@@ -78,10 +78,10 @@ export async function getAllSessions() {
 }
 
 // Chat
-export async function sendChatMessage(message: string, sessionContext?: Record<string, unknown>) {
-  return fetchAPI<{ response: string }>("/api/chat/", {
+export async function sendChatMessage(message: string, sessionContext?: Record<string, unknown>, conversationId?: string) {
+  return fetchAPI<{ response: string; conversation_id: string }>("/api/chat/", {
     method: "POST",
-    body: JSON.stringify({ message, session_context: sessionContext }),
+    body: JSON.stringify({ message, session_context: sessionContext, conversation_id: conversationId }),
   });
 }
 
