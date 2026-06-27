@@ -1,5 +1,7 @@
 # Kinetra: Smarter Recovery Starts at Home
 
+[![Watch the video](https://img.youtube.com/vi/BMAzPrpiKnI/maxresdefault.jpg)](https://www.youtube.com/watch?v=BMAzPrpiKnI)
+
 ## Problem Statement
 Current home-based physiotherapy often lacks personalization and continuous supervision. Patients are commonly prescribed standardized exercise programs with limited adaptation to their individual condition, pain level, mobility, or progress. Once patients leave the clinic, they typically perform exercises at home without professional guidance, making it difficult to ensure that exercises are performed correctly. This can lead to poor technique, reduced effectiveness, slower recovery, lower patient adherence, and an increased risk of re-injury.
 
