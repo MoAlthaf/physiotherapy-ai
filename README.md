@@ -2,7 +2,7 @@
 
 > Built for the Fanar AI Hackathon · June 2026
 
-> Team See Sharp
+> Team: See Sharp
 
 > Members: Mohamed Farag, Mohammed Althaf, Mohammed Kasif
 ---
