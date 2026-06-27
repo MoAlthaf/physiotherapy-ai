@@ -1,7 +1,8 @@
-# Kinetra — AI-Powered Home Physiotherapy Platform
+# Cuefit — AI-Powered Home Physiotherapy Platform
 
 > Built for the Fanar AI Hackathon · June 2026
-
+> Team See Sharp
+> Members: Mohamed Farag, Mohammed Althaf, Mohammed Kasif
 ---
 
 ## Table of Contents
@@ -31,7 +32,7 @@ The result is slower recovery, higher re-injury rates, and a costly return to in
 
 ## 2. Solution Overview
 
-**Kinetra** is an AI-powered home physiotherapy platform that brings real-time clinical supervision into the living room. It combines computer-vision pose tracking with a conversational AI coach to give patients the guidance of a physiotherapist during every repetition.
+**Cuefit** is an AI-powered home physiotherapy platform that brings real-time clinical supervision into the living room. It combines computer-vision pose tracking with a conversational AI coach to give patients the guidance of a physiotherapist during every repetition.
 
 The platform operates through two tightly integrated modules:
 
@@ -42,10 +43,10 @@ The platform operates through two tightly integrated modules:
 
 A patient's typical session:
 
-1. Open Kinetra, select a workout package (Arms & Shoulders, Torso & Core, or Legs & Hips).
+1. Open Cuefit, select a workout package (Arms & Shoulders, Torso & Core, or Legs & Hips).
 2. Review the exercise instructions and set target reps and sets.
-3. Step in front of the webcam and begin. Kinetra tracks every movement, overlays the detected skeleton on-screen, and counts reps automatically.
-4. If the Voice Coach is on, Kinetra listens for **"Hey Coach"** — the patient can ask questions or request feedback hands-free at any moment.
+3. Step in front of the webcam and begin. Cuefit tracks every movement, overlays the detected skeleton on-screen, and counts reps automatically.
+4. If the Voice Coach is on, Cuefit listens for **"Hey Coach"** — the patient can ask questions or request feedback hands-free at any moment.
 5. After each set, the coach speaks a personalised comment citing the actual performance numbers (reps completed, symmetry %, compensations detected).
 6. After all exercises, the platform generates a written AI session report and a per-exercise breakdown.
 
@@ -132,7 +133,7 @@ JSON response → frontend renders skeleton overlay + metrics panel
 
 ### 3.4 Exercise Profiles
 
-Kinetra ships with **9 clinically relevant exercises** grouped into **3 workout packages**:
+Cuefit ships with **9 clinically relevant exercises** grouped into **3 workout packages**:
 
 | Package | Exercises |
 |---------|-----------|
@@ -173,7 +174,7 @@ PackageRunner     owns voice coach, set/rest transitions, inter-exercise TTS
 
 ## 4. Agentic Workflow Design
 
-Kinetra's AI Coach is an agentic system that continuously monitors context, decides when and what to say, routes between input modes, and enforces its own safety constraints — without requiring the user to explicitly request feedback.
+Cuefit's AI Coach is an agentic system that continuously monitors context, decides when and what to say, routes between input modes, and enforces its own safety constraints — without requiring the user to explicitly request feedback.
 
 ### 4.1 The Coach Agent
 
@@ -234,7 +235,7 @@ This pipeline gives near-real-time voice interaction despite the API being batch
 
 ### 4.4 Proactive Coaching (Compensation Persistence)
 
-The coach also speaks without being asked. During a set, Kinetra tracks every detected compensation (torso lean, shoulder hike, knee valgus, hip drop) across frames. A compensation is only spoken aloud when:
+The coach also speaks without being asked. During a set, Cuefit tracks every detected compensation (torso lean, shoulder hike, knee valgus, hip drop) across frames. A compensation is only spoken aloud when:
 
 1. The same fault has been continuously detected for **≥ 4 seconds** (configurable via `COMPENSATION_PERSIST_MS`).
 2. Gaps shorter than 1.5 seconds do not reset the streak (accommodating low-fps pose detection).
@@ -309,7 +310,7 @@ A deliberate choice was made to prevent the LLM from generating plausible-soundi
 
 ## 6. Recommendations for Future Fanar Improvements
 
-Through building and iterating on Kinetra, we identified several areas where Fanar API enhancements would meaningfully improve real-time physiotherapy applications — and likely many other conversational AI products.
+Through building and iterating on Cuefit, we identified several areas where Fanar API enhancements would meaningfully improve real-time physiotherapy applications — and likely many other conversational AI products.
 
 ### 6.1 Real-Time Streaming ASR (WebSocket)
 
@@ -325,7 +326,7 @@ Through building and iterating on Kinetra, we identified several areas where Fan
 
 ### 6.3 Bilingual TTS Voice Selection
 
-**Current limitation:** The Jake voice is an American English voice. When the coach speaks Arabic (which Kinetra supports, since Fanar-C-2-27B can respond in Arabic), the voice sounds unnatural — prosody, emphasis, and phonology are mismatched.
+**Current limitation:** The Jake voice is an American English voice. When the coach speaks Arabic (which Cuefit supports, since Fanar-C-2-27B can respond in Arabic), the voice sounds unnatural — prosody, emphasis, and phonology are mismatched.
 
 **Recommendation:** Expose an Arabic-native voice option in Fanar-Aura-TTS-2. A Gulf-dialect Arabic voice would dramatically improve the Arabic experience and is well within Fanar's regional focus. Ideally, expose both a male and female option so applications can match the voice to the user's preference.
 
@@ -406,4 +407,4 @@ physiotherapy-ai/
 
 ---
 
-*Kinetra — bringing clinical supervision home, one rep at a time.*
+*Cuefit — the right cue, every rep.*
