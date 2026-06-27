@@ -283,8 +283,6 @@ The chat agent maintains rolling conversation history (up to 20 turns) keyed by 
 | **Chat / LLM** | `Fanar-C-2-27B` | Coach responses (text and voice), AI session summaries, between-set comments. Temperature set to 0.4 for consistent, grounded output. |
 | **Text-to-Speech** | `Fanar-Aura-TTS-2` (voice: Jake) | Converts every coach response to spoken audio. All text is cleaned through `_clean_for_tts()` before sending — strips `!` and `！` to prevent emphatic TTS artifacts. |
 | **Speech-to-Text** | `Fanar-Aura-STT-1` | Transcribes the user's recorded voice commands (WAV) to text. Supports bilingual input: Arabic and English auto-detected. |
-| **Content Moderation** | `FanarGuard` | Pre-LLM safety classifier. Evaluates every user message for harmful intent, off-topic requests, and prompt injection before it reaches the language model. |
-| **Agentic Model** | `Fanar-Sadiq-Agentic` | Referenced in the client for advanced task-routing scenarios. |
 
 ### 5.2 Anti-Hallucination Design
 
