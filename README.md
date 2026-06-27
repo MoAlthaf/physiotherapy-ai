@@ -1,7 +1,9 @@
 # Cuefit — AI-Powered Home Physiotherapy Platform
 
 > Built for the Fanar AI Hackathon · June 2026
+
 > Team See Sharp
+
 > Members: Mohamed Farag, Mohammed Althaf, Mohammed Kasif
 ---
 
