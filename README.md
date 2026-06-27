@@ -1,6 +1,6 @@
 # Kinetra: Smarter Recovery Starts at Home
 
-## Demo
+## Demo - (Click Image)
 [![Watch the video](https://img.youtube.com/vi/BMAzPrpiKnI/hqdefault.jpg)](https://www.youtube.com/watch?v=BMAzPrpiKnI)
 
 ## Problem Statement
