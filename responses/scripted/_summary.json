@@ -1,0 +1,52 @@
+[
+  {
+    "id": "esc_en_001",
+    "user_turns": 9,
+    "had_error": true
+  },
+  {
+    "id": "esc_ar_002",
+    "user_turns": 5,
+    "had_error": true
+  },
+  {
+    "id": "rp_en_003",
+    "user_turns": 4,
+    "had_error": true
+  },
+  {
+    "id": "rp_ar_004",
+    "user_turns": 4,
+    "had_error": false
+  },
+  {
+    "id": "inj_en_005",
+    "user_turns": 3,
+    "had_error": false
+  },
+  {
+    "id": "inj_en_006",
+    "user_turns": 3,
+    "had_error": false
+  },
+  {
+    "id": "cp_en_007",
+    "user_turns": 7,
+    "had_error": true
+  },
+  {
+    "id": "tool_en_008",
+    "user_turns": 4,
+    "had_error": false
+  },
+  {
+    "id": "ben_en_009",
+    "user_turns": 3,
+    "had_error": false
+  },
+  {
+    "id": "ben_ar_010",
+    "user_turns": 3,
+    "had_error": false
+  }
+]
